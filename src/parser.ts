@@ -5,7 +5,7 @@ import {createConst, createInterface, createStatement, Options} from "./swagger"
 export interface Block {
     displayName: string;
     statements: Statement[];
-    variables: {[index: string]: string};
+    variables: { [index: string]: string };
     hasPathParams: boolean;
     hasBody: boolean;
 }
@@ -42,11 +42,13 @@ export function parse(json: SwaggerInput, options: Options): ParseOutput {
         };
     });
 
-    // console.log(json.definitions);
+    if (!json.definitions) {
+        json.definitions = {};
+    }
     const definitions = Object
         .keys(json.definitions)
         .map((key) => {
-            const name = dashToStartCase(key);
+            const name = NonWordToCamelCase(key);
             const members = getParamsFromObject([json.definitions[key] as any], true);
             const int = createInterface(name, members);
             return int;
@@ -72,7 +74,7 @@ export function parse(json: SwaggerInput, options: Options): ParseOutput {
                     .keys(current)
                     .map((methodType: MethodKeys) => {
                         const item: MethodItem = current[methodType];
-                        const name = item.operationId;
+                        const name = generatePathMethodName(item, methodType);
                         const bodyItems = (item.parameters || [])
                             .map((x) => {
                                 if (x.in === "body") {
@@ -106,8 +108,9 @@ export function parse(json: SwaggerInput, options: Options): ParseOutput {
                     }));
             }, []);
     }
-    function dashToStartCase(input) {
-        return input.split("-").map((x) => upper(x)).join("");
+
+    function NonWordToCamelCase(input) {
+        return input.split(/[\W|_]/g).filter(Boolean).map((x) => upper(x)).join("");
     }
 
     function upper(input) {
@@ -133,14 +136,16 @@ export function parse(json: SwaggerInput, options: Options): ParseOutput {
         return node;
     }
 
-    function getResponses(responses: { [K in ResponseCode ]: IResponsesItem}) {
+    function getResponses(responses: { [K in ResponseCode]: IResponsesItem}) {
         return Object.keys(responses).map((code) => {
             const current = responses[code];
             const schema: IDefinitionsItemProperties = current.schema;
             const typeName = Number.isNaN(Number(code))
                 ? `Response${upper(code)}`
                 : `Response${code}`;
-            if (schema["$ref"]) {
+            if (!schema) {
+                return false;
+            } else if (schema["$ref"]) {
                 const dashRefName = interfaceNameFromRef(schema["$ref"]);
                 const node: any = ts.createNode(ts.SyntaxKind.TypeAliasDeclaration);
                 node.modifiers = [ts.createToken(ts.SyntaxKind.ExportKeyword)];
@@ -161,7 +166,7 @@ export function parse(json: SwaggerInput, options: Options): ParseOutput {
         return node;
     }
 
-    function resolveFromTopLevelSchema(name, input: IResponsesSchema, isLocal = false) {
+    function resolveFromTopLevelSchema(name, input: IDefinitionsItemProperties, isLocal = false) {
         const node: any = ts.createNode(ts.SyntaxKind.TypeAliasDeclaration);
         node.modifiers = [ts.createToken(ts.SyntaxKind.ExportKeyword)];
         node.name = ts.createIdentifier(name);
@@ -267,7 +272,7 @@ export function parse(json: SwaggerInput, options: Options): ParseOutput {
 
     function interfaceNameFromRef(ref: string): string {
         const [refName] = ref.split("/").slice(-1);
-        return dashToStartCase(refName);
+        return NonWordToCamelCase(refName);
     }
 
     function namedProp(name: string, optional = false) {
@@ -281,6 +286,71 @@ export function parse(json: SwaggerInput, options: Options): ParseOutput {
 
         return prop;
     }
+
+    function moveDefaultToLast([key, value]: [string, any]) {
+        return key === "default" ? 1 : 0;
+    }
+
+    function formatPathMethodName(refName: string): string {
+        return NonWordToCamelCase(refName)
+            .replace("#", "")
+            .replace(/\//gi, "");
+    }
+
+    function generatePathMethodName(item: MethodItem, methodType: MethodKeys): string {
+        if (item.operationId) {
+            return item.operationId;
+        }
+
+        const sortedResponses = Object.entries(item.responses)
+            .sort(moveDefaultToLast);
+
+        // Find out if any parents have the ref as a key
+        const refParent = sortedResponses.find(([name, responseObj]: [string, IResponsesItem]) => {
+            return findKeyPresence(responseObj, ["$ref"]) !== false;
+        })[1];
+
+        if (refParent) {
+            const ref = findKeyString(refParent, ["$ref"]);
+            return `${methodType}${upper(formatPathMethodName(ref))}`;
+        }
+
+        // Find out if any parents have the ref as a key
+        const descParent = sortedResponses.find(([name, responseObj]: [string, IResponsesItem]) => {
+            return findKeyPresence(responseObj, ["description"]) !== false;
+        })[1];
+
+        const desc = findKeyString(descParent, ["description"]);
+        return `${methodType}${upper(formatPathMethodName(desc))}`;
+    }
+
+    function findKey(object: any, keys: string[]): any {
+        for (const property in object) {
+            // Bypass default/inherited properties
+            if (!object.hasOwnProperty(property)) {
+                continue;
+            }
+
+            // Get recursing if there are depths to go.
+            if (typeof object[property] === "object") {
+                return findKey(object[property], keys);
+            }
+
+            // If the property is one that we're looking for, return the value
+            if (keys.find((key) => key === property)) {
+                return object[property];
+            }
+        }
+        return false;
+    }
+
+    function findKeyPresence(object: any, keys: string[]): boolean {
+        return findKey(object, keys) !== false;
+    }
+
+    function findKeyString(object: any, keys: string[]): string {
+        return findKey(object, keys) + "";
+    }
 }
 
 export interface SwaggerInput {
@@ -290,14 +360,15 @@ export interface SwaggerInput {
 
 export type MethodKeys = "put" | "post" | "get" | "delete";
 export type ResponseCode = "200" | "401" | "default";
-export type PathsItem = { [K in MethodKeys ]: MethodItem };
+export type PathsItem = { [K in MethodKeys]: MethodItem };
 
 export interface MethodItem {
     tags: string[];
     description: string;
-    operationId: string;
+    operationId?: string;
+    produces?: string[];
     parameters: IParametersItem[];
-    responses: { [K in ResponseCode ]: IResponsesItem};
+    responses: { [K in ResponseCode]: IResponsesItem};
 }
 
 export interface SchemaParam {
@@ -338,7 +409,9 @@ export interface IResponsesItem {
     schema: IResponsesSchema;
 }
 
-export interface PropDefs { [index: string]: IDefinitionsItemProperties; }
+export interface PropDefs {
+    [index: string]: IDefinitionsItemProperties;
+}
 
 export interface DefinitionsItem {
     type: "object";
@@ -367,5 +440,5 @@ export type IDefinitionsItemProperties = {
 } | {
     type: "array"
     description?: string;
-    items: IDefinitionsItemProperties
+    items: IDefinitionsItemProperties | IResponsesSchema
 };

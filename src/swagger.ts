@@ -86,7 +86,10 @@ export function createSplitDefs(json: SwaggerInput, options = {}): SplitDefsOutp
     };
 }
 
-export function createConst(name: string, value: string): ts.VariableDeclaration {
+export function createConst(name: string, value: string): ts.VariableDeclaration | false {
+    if (!value) {
+        value = "";
+    }
     const node = ts.createNode(ts.SyntaxKind.VariableDeclaration) as ts.VariableDeclaration;
     node.flags = 0;
     node.name = ts.createIdentifier(name);

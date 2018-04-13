@@ -1,7 +1,6 @@
 import * as ts from "typescript";
 import {Statement} from "typescript";
 import {createConst, createInterface, createStatement, Options} from "./swagger";
-import {IParametersItem} from "../dist/parser";
 
 export interface Block {
     displayName: string;

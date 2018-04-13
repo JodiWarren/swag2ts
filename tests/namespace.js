@@ -1,8 +1,7 @@
-
 const {readFileSync} = require('fs');
 const assert = require('assert');
 const stub1 = require('../fixtures/mini');
-const {createSplitDefs} = require('../src/swagger');
+const {createSplitDefs} = require('../dist/swagger');
 
 describe("namespace generation", function() {
     it('works as multi-file', function() {

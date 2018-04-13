@@ -1,4 +1,4 @@
-const {createSplitDefs} = require("../src/swagger");
+const {createSplitDefs} = require("../dist/swagger");
 const {readFileSync, readdirSync} = require('fs');
 
 const hasJsonExtension = filename => filename.substr(-5) === '.json';

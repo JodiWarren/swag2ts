@@ -9,7 +9,9 @@
     "unit": "mocha tests/*",
     "build": "tsc",
     "test": "npm run lint && npm run build && npm run unit",
-    "prepublishOnly": "npm test"
+    "prepublishOnly": "npm test",
+    "inspectFile": "npm run lint && npm run build && node --inspect-brk dist/bin.js ",
+    "inspect": "npm run lint && npm run build && node --inspect-brk dist/bin.js fixtures/petstore-expanded.json"
   },
   "keywords": [],
   "files": [

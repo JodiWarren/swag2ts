@@ -1,6 +1,7 @@
 import * as ts from "typescript";
 import {Statement} from "typescript";
 import {createConst, createInterface, createStatement, Options} from "./swagger";
+import {IParametersItem} from "../dist/parser";
 
 export interface Block {
     displayName: string;
@@ -73,8 +74,10 @@ export function parse(json: SwaggerInput, options: Options): ParseOutput {
                 return acc.concat(Object
                     .keys(current)
                     .map((methodType: MethodKeys) => {
-                        const item: MethodItem = current[methodType];
-                        const name = generatePathMethodName(item, methodType);
+                        const item: MethodItem | PathItemParam[] = current[methodType];
+                        const name = Array.isArray(item)
+                            ? generatePathParametersName(item)
+                            : generatePathMethodName(item, methodType);
                         const bodyItems = (item.parameters || [])
                             .map((x) => {
                                 if (x.in === "body") {
@@ -297,11 +300,11 @@ export function parse(json: SwaggerInput, options: Options): ParseOutput {
             .replace(/\//gi, "");
     }
 
-    function generatePathMethodName(item: MethodItem, methodType: MethodKeys): string {
-        if (item.operationId) {
-            return item.operationId;
-        }
+    function generatePathParametersName(item: PathItemParam): string {
+        return `${NonWordToCamelCase(item[0].in)}${upper(NonWordToCamelCase(item[0].name))}`;
+    }
 
+    function generatePathMethodName(item: MethodItem, methodType: MethodKeys): string {
         const sortedResponses = Object.entries(item.responses)
             .sort(moveDefaultToLast);
 
@@ -360,7 +363,23 @@ export interface SwaggerInput {
 
 export type MethodKeys = "put" | "post" | "get" | "delete";
 export type ResponseCode = "200" | "401" | "default";
-export type PathsItem = { [K in MethodKeys]: MethodItem };
+
+export interface PathsItem extends PathsMethodItem, PathsParam {}
+
+export type PathsMethodItem = {
+    [K in MethodKeys]: MethodItem
+};
+
+export interface PathsParam {
+    parameters: PathItemParam[];
+}
+
+export interface PathItemParam {
+    name: string;
+    in: string;
+    description?: string;
+    required?: boolean;
+}
 
 export interface MethodItem {
     tags: string[];
